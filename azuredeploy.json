@@ -4,7 +4,7 @@
   "parameters": {
     "adminUsername": {
       "type": "string",
-      "defaultValue": "slurmadmin",
+      "defaultValue": "hpcuser",
       "metadata": {
         "description": "User name for the Slurm Admin. Pick a valid username otherwise there will be a BadRequest error."
       }
@@ -38,7 +38,7 @@
     },
     "sharedDiskSize": {
       "type": "int",
-      "defaultValue": 512,
+      "defaultValue": 100,
       "minValue": 32,
       "maxValue": 4095,
       "metadata": {
@@ -81,7 +81,7 @@
       "metadata": {
         "description": "The base URI where artifacts required by this template are located. When the template is deployed using the accompanying scripts, a private location in the subscription will be used and this value will be automatically generated."
       },
-      "defaultValue": "https://raw.githubusercontent.com/tamhinsf/Slurm4Azure/master/"
+      "defaultValue": "https://raw.githubusercontent.com/ravinderzangra/slurmaz/main/"
     },
     "_artifactsLocationSasToken": {
       "type": "securestring",
