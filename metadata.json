@@ -2,6 +2,6 @@
   "itemDisplayName": "slurmaz",
   "description": "Creates a SLURM cluster with a master vm and a configurable number of execute.",
   "githubUsername": "ravinderzangra",
-  "summary": "Slurm4Azure",
+  "summary": "slurmaz",
   "dateUpdated": "2024-05-30"
 }
