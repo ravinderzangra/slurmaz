@@ -14,7 +14,7 @@ echo $@ >> /tmp/azuredeploy.log.$$ 2>&1
 
 # Usage
 if [ "$#" -ne 11 ]; then
-  echo "Usage: $0 MASTER_NAME MASTER_IP MASTER_AS_WORKER WORKER_NAME WORKER_IP_BASE WORKER_IP_START NUM_OF_VM ADMIN_USERNAME ADMIN_PASSWORD NUM_OF_DATA_DISKS TEMPLATE_BASE" >> /tmp/azuredeploy.log.$$
+  echo "Usage: $0 MASTER_NAME MASTER_IP MASTER_AS_COMPUTE COMPUTE_NAME COMPUTE_IP_BASE COMPUTE_IP_START NUM_OF_VM ADMIN_USERNAME ADMIN_PASSWORD NUM_OF_DATA_DISKS TEMPLATE_BASE" >> /tmp/azuredeploy.log.$$
   exit 1
 fi
 
@@ -24,10 +24,10 @@ fi
 # Parameters
 MASTER_NAME=${1}
 MASTER_IP=${2}
-MASTER_AS_WORKER=${3}
-WORKER_NAME=${4}
-WORKER_IP_BASE=${5}
-WORKER_IP_START=${6}
+MASTER_AS_COMPUTE=${3}
+COMPUTE_NAME=${4}
+COMPUTE_IP_BASE=${5}
+COMPUTE_IP_START=${6}
 NUM_OF_VM=${7}
 ADMIN_USERNAME=${8}
 ADMIN_PASSWORD=${9}
@@ -71,13 +71,13 @@ sudo -u $ADMIN_USERNAME touch /data/shared-bashrc
 echo "source /data/shared-bashrc" | sudo -u $ADMIN_USERNAME tee -a /home/$ADMIN_USERNAME/.bashrc 
 
 # Create Workers NFS client install script and store it on /data
-sudo rm /data/tmp/workerNfs.sh
-sudo touch /data/tmp/workerNfs.sh
-sudo chmod u+x /data/tmp/workerNfs.sh
-echo "sudo sh -c \"mkdir /data\"" | sudo tee -a /data/tmp/workerNfs.sh >> /tmp/azuredeploy.log.$$ 2>&1
-echo "sudo apt-get install nfs-common -y" | sudo tee -a /data/tmp/workerNfs.sh >> /tmp/azuredeploy.log.$$ 2>&1
-echo "echo \"$MASTER_NAME:/data /data nfs rw,hard,intr 0 0\" | sudo tee -a /etc/fstab " | sudo tee -a /data/tmp/workerNfs.sh  >> /tmp/azuredeploy.log.$$ 2>&1
-echo "sudo sh -c \"mount /data\"" | sudo tee -a /data/tmp/workerNfs.sh >> /tmp/azuredeploy.log.$$ 2>&1
+sudo rm /data/tmp/computeNfs.sh
+sudo touch /data/tmp/computeNfs.sh
+sudo chmod u+x /data/tmp/computeNfs.sh
+echo "sudo sh -c \"mkdir /data\"" | sudo tee -a /data/tmp/computeNfs.sh >> /tmp/azuredeploy.log.$$ 2>&1
+echo "sudo apt-get install nfs-common -y" | sudo tee -a /data/tmp/computeNfs.sh >> /tmp/azuredeploy.log.$$ 2>&1
+echo "echo \"$MASTER_NAME:/data /data nfs rw,hard,intr 0 0\" | sudo tee -a /etc/fstab " | sudo tee -a /data/tmp/computeNfs.sh  >> /tmp/azuredeploy.log.$$ 2>&1
+echo "sudo sh -c \"mount /data\"" | sudo tee -a /data/tmp/computeNfs.sh >> /tmp/azuredeploy.log.$$ 2>&1
 
 # Update master node hosts file
 echo $MASTER_IP $MASTER_NAME >> /etc/hosts
@@ -85,7 +85,7 @@ echo $MASTER_IP $MASTER_NAME > /data/tmp/hosts
 
 # Update ssh config file to ignore unknown hosts
 # Note all settings are for $ADMIN_USERNAME, NOT root
-sudo -u $ADMIN_USERNAME sh -c "mkdir /home/$ADMIN_USERNAME/.ssh/;echo Host worker\* > /home/$ADMIN_USERNAME/.ssh/config; echo StrictHostKeyChecking no >> /home/$ADMIN_USERNAME/.ssh/config; echo UserKnownHostsFile=/dev/null >> /home/$ADMIN_USERNAME/.ssh/config"
+sudo -u $ADMIN_USERNAME sh -c "mkdir /home/$ADMIN_USERNAME/.ssh/;echo Host compute\* > /home/$ADMIN_USERNAME/.ssh/config; echo StrictHostKeyChecking no >> /home/$ADMIN_USERNAME/.ssh/config; echo UserKnownHostsFile=/dev/null >> /home/$ADMIN_USERNAME/.ssh/config"
 
 # Generate a set of sshkey under /honme/$ADMIN_USERNAME/.ssh if there is not one yet
 if ! [ -f /home/$ADMIN_USERNAME/.ssh/id_rsa ]; then
@@ -95,17 +95,17 @@ fi
 # Install sshpass to automate ssh-copy-id action
 sudo apt-get install sshpass -y >> /tmp/azuredeploy.log.$$ 2>&1
 
-# Loop through all worker nodes, update hosts file and copy ssh public key to it
-# The script make the assumption that the node is called %WORKER+<index> and have
+# Loop through all compute nodes, update hosts file and copy ssh public key to it
+# The script make the assumption that the node is called %COMPUTE+<index> and have
 # static IP in sequence order
 i=0
 while [ $i -lt $NUM_OF_VM ]
 do
-   workerip=`expr $i + $WORKER_IP_START`
-   echo 'I update host - '$WORKER_NAME$i >> /tmp/azuredeploy.log.$$ 2>&1
-   echo $WORKER_IP_BASE$workerip $WORKER_NAME$i >> /etc/hosts
-   echo $WORKER_IP_BASE$workerip $WORKER_NAME$i >> /data/tmp/hosts
-   sudo -u $ADMIN_USERNAME sh -c "sshpass -p '$ADMIN_PASSWORD' ssh-copy-id $WORKER_NAME$i"
+   computeip=`expr $i + $COMPUTE_IP_START`
+   echo 'I update host - '$COMPUTE_NAME$i >> /tmp/azuredeploy.log.$$ 2>&1
+   echo $COMPUTE_IP_BASE$computeip $COMPUTE_NAME$i >> /etc/hosts
+   echo $COMPUTE_IP_BASE$computeip $COMPUTE_NAME$i >> /data/tmp/hosts
+   sudo -u $ADMIN_USERNAME sh -c "sshpass -p '$ADMIN_PASSWORD' ssh-copy-id $COMPUTE_NAME$i"
    i=`expr $i + 1`
 done
 
@@ -125,24 +125,24 @@ sudo chown slurm /var/spool/slurm
 SLURMCONF=/data/tmp/slurm.conf
 wget $TEMPLATE_BASE/slurm.template.conf -O $SLURMCONF >> /tmp/azuredeploy.log.$$ 2>&1
 sed -i -- 's/__MASTERNODE__/'"$MASTER_NAME"'/g' $SLURMCONF >> /tmp/azuredeploy.log.$$ 2>&1
-if [ "$MASTER_AS_WORKER" = "True" ];then
-  sed -i -- 's/__MASTER_AS_WORKER_NODE__,/'"$MASTER_NAME,"'/g' $SLURMCONF >> /tmp/azuredeploy.log.$$ 2>&1
+if [ "$MASTER_AS_COMPUTE" = "True" ];then
+  sed -i -- 's/__MASTER_AS_COMPUTE_NODE__,/'"$MASTER_NAME,"'/g' $SLURMCONF >> /tmp/azuredeploy.log.$$ 2>&1
 else
-  sed -i -- 's/__MASTER_AS_WORKER_NODE__,/'""'/g' $SLURMCONF >> /tmp/azuredeploy.log.$$ 2>&1
+  sed -i -- 's/__MASTER_AS_COMPUTE_NODE__,/'""'/g' $SLURMCONF >> /tmp/azuredeploy.log.$$ 2>&1
 fi
 lastvm=`expr $NUM_OF_VM - 1`
-sed -i -- 's/__WORKERNODES__/'"$WORKER_NAME"'[0-'"$lastvm"']/g' $SLURMCONF >> /tmp/azuredeploy.log.$$ 2>&1
+sed -i -- 's/__COMPUTENODES__/'"$COMPUTE_NAME"'[0-'"$lastvm"']/g' $SLURMCONF >> /tmp/azuredeploy.log.$$ 2>&1
 
-WORKER_CPUS=`sudo -u $ADMIN_USERNAME ssh worker0 '( nproc --all )'` >> /tmp/azuredeploy.log.$$ 2>&1
-sed -i -- 's/__NODECPUS__/'"CPUs=`echo $WORKER_CPUS`"'/g' $SLURMCONF >> /tmp/azuredeploy.log.$$ 2>&1
+COMPUTE_CPUS=`sudo -u $ADMIN_USERNAME ssh compute0 '( nproc --all )'` >> /tmp/azuredeploy.log.$$ 2>&1
+sed -i -- 's/__NODECPUS__/'"CPUs=`echo $COMPUTE_CPUS`"'/g' $SLURMCONF >> /tmp/azuredeploy.log.$$ 2>&1
 #sed -i -- 's/__NODECPUS__/'"CPUs=`nproc --all`"'/g' $SLURMCONF >> /tmp/azuredeploy.log.$$ 2>&1
 
-WORKER_RAM=`sudo -u $ADMIN_USERNAME ssh worker0 '( free -m )' | awk '/Mem:/{print $2}'` >> /tmp/azuredeploy.log.$$ 2>&1
-sed -i -- 's/__NODERAM__/'"RealMemory=`echo $WORKER_RAM`"'/g' $SLURMCONF >> /tmp/azuredeploy.log.$$ 2>&1
+COMPUTE_RAM=`sudo -u $ADMIN_USERNAME ssh compute0 '( free -m )' | awk '/Mem:/{print $2}'` >> /tmp/azuredeploy.log.$$ 2>&1
+sed -i -- 's/__NODERAM__/'"RealMemory=`echo $COMPUTE_RAM`"'/g' $SLURMCONF >> /tmp/azuredeploy.log.$$ 2>&1
 #sed -i -- 's/__NODERAM__/'"RealMemory=`free -m | awk '/Mem:/{print $2}'`"'/g' $SLURMCONF >> /tmp/azuredeploy.log.$$ 2>&1
 
-WORKER_THREADS=`sudo -u $ADMIN_USERNAME ssh worker0 '( lscpu|grep Thread|cut -d ":" -f 2 )'| awk '{$1=$1;print}'` >> /tmp/azuredeploy.log.$$ 2>&1
-sed -i -- 's/__NODETHREADS__/'"ThreadsPerCore=`echo $WORKER_THREADS`"'/g' $SLURMCONF >> /tmp/azuredeploy.log.$$ 2>&1
+COMPUTE_THREADS=`sudo -u $ADMIN_USERNAME ssh compute0 '( lscpu|grep Thread|cut -d ":" -f 2 )'| awk '{$1=$1;print}'` >> /tmp/azuredeploy.log.$$ 2>&1
+sed -i -- 's/__NODETHREADS__/'"ThreadsPerCore=`echo $COMPUTE_THREADS`"'/g' $SLURMCONF >> /tmp/azuredeploy.log.$$ 2>&1
 #sed -i -- 's/__NODETHREADS__/'"ThreadsPerCore=`lscpu|grep Thread|cut -d ":" -f 2|awk '{$1=$1;print}'`"'/g' $SLURMCONF >> /tmp/azuredeploy.log.$$ 2>&1
 
 sudo cp -f $SLURMCONF /etc/slurm-llnl/slurm.conf >> /tmp/azuredeploy.log.$$ 2>&1
@@ -178,24 +178,24 @@ sudo -u $ADMIN_USERNAME xz -dc /data/canu/canu-1.6.*.tar.xz |tar -xf - -C /data/
 # Update the file to store environment vars used across the cluster
 echo "PATH=\$PATH:/data/canu/canu-1.6/Linux-amd64/bin" | sudo -u $ADMIN_USERNAME tee -a /data/shared-bashrc
 
-# Create and deploy assets to worker nodes
-echo "Start looping all workers" >> /tmp/azuredeploy.log.$$ 2>&1 
+# Create and deploy assets to compute nodes
+echo "Start looping all computes" >> /tmp/azuredeploy.log.$$ 2>&1 
 
 i=0
 while [ $i -lt $NUM_OF_VM ]
 do
-   worker=$WORKER_NAME$i
+   compute=$COMPUTE_NAME$i
 
-   echo "SCP to $worker"  >> /tmp/azuredeploy.log.$$ 2>&1 
+   echo "SCP to $compute"  >> /tmp/azuredeploy.log.$$ 2>&1 
    # copy NFS mount script over
-   sudo -u $ADMIN_USERNAME scp /data/tmp/workerNfs.sh $ADMIN_USERNAME@$worker:/tmp/workerNfs.sh >> /tmp/azuredeploy.log.$$ 2>&1
+   sudo -u $ADMIN_USERNAME scp /data/tmp/computeNfs.sh $ADMIN_USERNAME@$compute:/tmp/computeNfs.sh >> /tmp/azuredeploy.log.$$ 2>&1
    # small hack: munge.key has permission problems when copying from NFS drive.  Fix this later
-   sudo -u $ADMIN_USERNAME scp $mungekey $ADMIN_USERNAME@$worker:/tmp/munge.key >> /tmp/azuredeploy.log.$$ 2>&1
+   sudo -u $ADMIN_USERNAME scp $mungekey $ADMIN_USERNAME@$compute:/tmp/munge.key >> /tmp/azuredeploy.log.$$ 2>&1
    
-   echo "Remote execute on $worker" >> /tmp/azuredeploy.log.$$ 2>&1 
-   sudo -u $ADMIN_USERNAME ssh $ADMIN_USERNAME@$worker >> /tmp/azuredeploy.log.$$ 2>&1 << 'ENDSSH1'
-      sudo /tmp/workerNfs.sh
-      sudo rm -f /tmp/workerNfs.sh
+   echo "Remote execute on $compute" >> /tmp/azuredeploy.log.$$ 2>&1 
+   sudo -u $ADMIN_USERNAME ssh $ADMIN_USERNAME@$compute >> /tmp/azuredeploy.log.$$ 2>&1 << 'ENDSSH1'
+      sudo /tmp/computeNfs.sh
+      sudo rm -f /tmp/computeNfs.sh
       sudo echo "source /data/shared-bashrc" | sudo -u $USER tee -a /home/$USER/.bashrc
       sudo sh -c "cat /data/tmp/hosts >> /etc/hosts"
       sudo chmod g-w /var/log
